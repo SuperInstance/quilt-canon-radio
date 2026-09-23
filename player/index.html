@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quilt Canon Radio</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  color: #e2e8f0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.container {
+  max-width: 720px;
+  width: 100%;
+  padding: 24px;
+}
+header { text-align: center; margin-bottom: 32px; }
+h1 {
+  font-size: 2.4em;
+  margin: 0;
+  background: linear-gradient(90deg, #f59e0b, #ec4899, #8b5cf6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.subtitle { color: #94a3b8; font-size: 0.95em; margin-top: 4px; }
+
+.player {
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 32px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+}
+
+.track-info { text-align: center; margin-bottom: 24px; }
+.track-title {
+  font-size: 1.4em;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 8px;
+}
+.track-meta { color: #94a3b8; font-size: 0.85em; }
+
+.controls { display: flex; gap: 12px; justify-content: center; margin-bottom: 24px; }
+.btn {
+  background: rgba(51, 65, 85, 0.7);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 50%;
+  width: 56px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 1.4em;
+  transition: all 0.2s;
+}
+.btn:hover { background: #475569; transform: scale(1.05); }
+.btn.play { background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; }
+.btn.play:hover { box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4); }
+
+.progress {
+  width: 100%;
+  height: 6px;
+  background: #334155;
+  border-radius: 3px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #ec4899);
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+.queue {
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 12px;
+  padding: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.queue h3 { margin: 0 0 12px; font-size: 0.9em; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; }
+.queue-item {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background 0.1s;
+}
+.queue-item:hover { background: rgba(51, 65, 85, 0.5); }
+.queue-item.active { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+.empty { color: #64748b; font-style: italic; text-align: center; padding: 20px; }
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+<h1>Quilt Canon Radio</h1>
+<div class="subtitle">Listen to the substrate walker canon, voice by voice.</div>
+</header>
+
+<div class="player">
+  <div class="track-info">
+    <div class="track-title" id="title">—</div>
+    <div class="track-meta" id="meta">No track loaded</div>
+  </div>
+
+  <div class="progress" id="progress">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="prev" title="Previous">⏮</button>
+    <button class="btn play" id="play" title="Play/Pause">▶</button>
+    <button class="btn" id="next" title="Next">⏭</button>
+  </div>
+
+  <div class="queue">
+    <h3>Up Next</h3>
+    <div id="queue-list"></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+let playlist = { items: [] };
+let currentIdx = 0;
+let audio = new Audio();
+let isPlaying = false;
+
+async function loadPlaylist() {
+  try {
+    const r = await fetch("../playlist.json");
+    playlist = await r.json();
+    if (playlist.items.length > 0) {
+      renderQueue();
+      loadTrack(0);
+    } else {
+      document.getElementById("queue-list").innerHTML = '<div class="empty">No tracks yet. Run: quilt-canon-radio generate</div>';
+    }
+  } catch (e) {
+    document.getElementById("queue-list").innerHTML = '<div class="empty">Failed to load playlist.json</div>';
+  }
+}
+
+function renderQueue() {
+  const q = document.getElementById("queue-list");
+  q.innerHTML = playlist.items.map((t, i) =>
+    `<div class="queue-item ${i === currentIdx ? 'active' : ''}" data-idx="${i}">
+      ${i + 1}. ${t.title}
+    </div>`
+  ).join("");
+  q.querySelectorAll(".queue-item").forEach(el => {
+    el.addEventListener("click", () => loadTrack(parseInt(el.dataset.idx)));
+  });
+}
+
+function loadTrack(idx) {
+  if (idx < 0 || idx >= playlist.items.length) return;
+  currentIdx = idx;
+  const t = playlist.items[idx];
+  document.getElementById("title").textContent = t.title;
+  document.getElementById("meta").textContent = `${(t.lore_chars || 0)} chars · ${(t.size_bytes / 1024).toFixed(1)} KB`;
+  audio.src = `/mp3/${t.path.split("/").pop()}`;
+  renderQueue();
+  if (isPlaying) audio.play();
+}
+
+function togglePlay() {
+  if (isPlaying) { audio.pause(); document.getElementById("play").textContent = "▶"; }
+  else { audio.play(); document.getElementById("play").textContent = "⏸"; }
+  isPlaying = !isPlaying;
+}
+
+function next() { loadTrack((currentIdx + 1) % playlist.items.length); }
+function prev() { loadTrack((currentIdx - 1 + playlist.items.length) % playlist.items.length); }
+
+document.getElementById("play").addEventListener("click", togglePlay);
+document.getElementById("next").addEventListener("click", next);
+document.getElementById("prev").addEventListener("click", prev);
+
+audio.addEventListener("ended", next);
+audio.addEventListener("timeupdate", () => {
+  if (audio.duration) {
+    document.getElementById("progress-fill").style.width = (audio.currentTime / audio.duration * 100) + "%";
+  }
+});
+
+loadPlaylist();
+</script>
+</body>
+</html>
